@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: outline
+  namespace: outline
+spec:
+  selector:
+    matchLabels:
+      app: outline
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: outline
+    spec:
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: outline
+      containers:
+      - name: outline
+        image: outlinewiki/outline:latest
+        #command: ["sh", "-c", " echo 'sleeping...'; sleep 5; yarn db:create --env=production-ssl-disabled || true; yarn db:migrate --env=production-ssl-disabled || true"]
+        envFrom:
+        - configMapRef:
+            name: outline
+        - secretRef:
+            name: outline
+        ports:
+        - containerPort: 80
+      - name: postgres
+        volumeMounts:
+        - name: data
+          mountPath: "/var/lib/postgresql/data"
+          subPath: postgres
+        image: postgres:latest
+        envFrom:
+        - secretRef:
+            name: outline
+        ports:
+        - containerPort: 5432
+      - name: redis
+        image: redis:latest
+        ports:
+        - containerPort: 6379
+      - name: minio
+        volumeMounts:
+        - name: data
+          mountPath: "/data"
+          subPath: minio
+        image: minio/minio:latest
+        args:
+        - server
+        - /data
+        envFrom:
+        - secretRef:
+            name: outline
+        ports:
+        - containerPort: 9000
+        readinessProbe:
+          httpGet:
+            path: /minio/health/ready
+            port: 9000
+          initialDelaySeconds: 120
+          periodSeconds: 20
+        livenessProbe:
+          httpGet:
+            path: /minio/health/live
+            port: 9000
+          initialDelaySeconds: 120
+          periodSeconds: 20
